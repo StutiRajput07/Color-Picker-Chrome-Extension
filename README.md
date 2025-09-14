@@ -4,371 +4,296 @@
 - Designed an intuitive user interface with a color picker tool and real-time color preview.
 - Integrated functionality to copy the selected color code to the clipboard.
 ```
-import React, { useState } from 'react';
-import './CheckerQueue.css';
+import React, { useMemo, useState } from "react";
+import "bootstrap/dist/css/bootstrap.min.css";
+import "./CheckerQueueComponent.css";
 
-const CheckerQueue = () => {
-  const [searchTerm, setSearchTerm] = useState('');
+/**
+ * CheckerQueueComponent.js
+ *
+ * - Uses dummy data (createdAt stored as timestamp in ms)
+ * - Search across workitemId, loanId, userId, applicant, and formatted date
+ * - 10 rows per page with Next/Prev pagination
+ * - Date format: 12 Sep, 2025
+ */
 
-  // Dummy data with Timestamp datatype for dates
-  const workItems = [
-    {
-      workflowId: 'WF001',
-      loanId: 'LN2025001',
-      userId: 'USR123',
-      applicantName: 'John Doe',
-      status: 'pending',
-      created: new Date('2025-09-12T10:30:00Z')
-    },
-    {
-      workflowId: 'WF002',
-      loanId: 'LN2025002',
-      userId: 'USR456',
-      applicantName: 'Alice Smith',
-      status: 'pending',
-      created: new Date('2025-09-15T14:20:00Z')
-    },
-    {
-      workflowId: 'WF003',
-      loanId: 'LN2025003',
-      userId: 'USR789',
-      applicantName: 'Rahul Kumar',
-      status: 'pending',
-      created: new Date('2025-09-10T09:15:00Z')
-    },
-    {
-      workflowId: 'WF004',
-      loanId: 'LN2025004',
-      userId: 'USR321',
-      applicantName: 'Priya Verma',
-      status: 'pending',
-      created: new Date('2025-09-14T16:45:00Z')
-    },
-    {
-      workflowId: 'WF005',
-      loanId: 'LN2025005',
-      userId: 'USR654',
-      applicantName: 'Michael Johnson',
-      status: 'pending',
-      created: new Date('2025-09-13T11:30:00Z')
-    }
-  ];
+const ROWS_TOTAL = 37; // generate dummy rows count (example)
+const PAGE_SIZE = 10;
 
-  // Format date to "12 Sep 2025" format
-  const formatDate = (timestamp) => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
-                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const date = new Date(timestamp);
-    const day = date.getDate();
-    const month = months[date.getMonth()];
-    const year = date.getFullYear();
-    return `${day} ${month} ${year}`;
+// helper to format timestamp -> "12 Sep, 2025"
+function formatDate(timestampMs) {
+  if (!timestampMs) return "";
+  const d = new Date(Number(timestampMs));
+  const opts = { day: "2-digit", month: "short", year: "numeric" };
+  // month short gives "Sep", we want "12 Sep, 2025"
+  const formatter = new Intl.DateTimeFormat("en-GB", opts);
+  const parts = formatter.format(d); // e.g., "12 Sep 2025"
+  // Insert comma after month
+  const [day, month, year] = parts.split(" ");
+  return `${day} ${month}, ${year}`;
+}
+
+// generate dummy data with timestamp (ms)
+function generateDummyRows(count) {
+  const rows = [];
+  const now = Date.now();
+  for (let i = 1; i <= count; i++) {
+    // serial-style IDs
+    const workitemId = `WI-${1000 + i}`; // e.g., WI-1001
+    const loanId = `LN-${2000 + i}`; // e.g., LN-2001
+    const userId = `user_${String(i).padStart(3, "0")}`;
+    const applicant = ["John Doe", "Alice Smith", "Rahul Kumar", "Priya Verma", "Arjun Patel"][(i - 1) % 5];
+    // createdAt: spread recent days (ms)
+    const createdAt = now - i * 86400000; // i days ago
+    rows.push({
+      workitemId,
+      loanId,
+      userId,
+      applicant,
+      status: "PENDING",
+      createdAt, // timestamp in ms
+    });
+  }
+  return rows;
+}
+
+export default function CheckerQueueComponent() {
+  const allRows = useMemo(() => generateDummyRows(ROWS_TOTAL), []);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+
+  // filter rows by search across specified fields
+  const filteredRows = useMemo(() => {
+    const q = (query || "").trim().toLowerCase();
+    if (!q) return allRows;
+    return allRows.filter((r) => {
+      // search workitem id, loan id, user id, applicant, formatted date
+      if (String(r.workitemId).toLowerCase().includes(q)) return true;
+      if (String(r.loanId).toLowerCase().includes(q)) return true;
+      if (String(r.userId).toLowerCase().includes(q)) return true;
+      if (String(r.applicant).toLowerCase().includes(q)) return true;
+      if (formatDate(r.createdAt).toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [allRows, query]);
+
+  // pagination
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, page), totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const pageRows = filteredRows.slice(pageStart, pageStart + PAGE_SIZE);
+
+  const handleView = (row) => {
+    // placeholder - replace with navigation / modal as needed
+    console.log("VIEW clicked:", row.workitemId);
+    alert(`Open details for ${row.workitemId}`);
   };
 
-  // Filter items based on search term
-  const filteredItems = workItems.filter(item => {
-    const searchLower = searchTerm.toLowerCase();
-    const dateFormatted = formatDate(item.created).toLowerCase();
-    
-    return item.workflowId.toLowerCase().includes(searchLower) ||
-           item.loanId.toLowerCase().includes(searchLower) ||
-           dateFormatted.includes(searchLower);
-  });
+  const goPrev = () => setPage((p) => Math.max(1, p - 1));
+  const goNext = () => setPage((p) => Math.min(totalPages, p + 1));
 
-  const handleView = (workflowId) => {
-    alert(`Viewing details for Workflow ID: ${workflowId}`);
-    // Add your view logic here
-  };
+  // reset page to 1 when query changes
+  React.useEffect(() => {
+    setPage(1);
+  }, [query]);
 
   return (
-    <div className="checker-queue-container">
+    <div className="checker-page">
       <div className="container-fluid p-4">
-        {/* Header */}
-        <div className="mb-4">
-          <h2 className="checker-queue-title">Checker Queue</h2>
-        </div>
+        <div className="card checker-card">
+          <div className="card-body">
+            {/* header: title left, search right */}
+            <div className="d-flex align-items-center justify-content-between mb-3">
+              <h4 className="cq-heading mb-0">CHECKER QUEUE</h4>
 
-        {/* Search Bar */}
-        <div className="row mb-4">
-          <div className="col-md-6">
-            <div className="search-container">
-              <input
-                type="text"
-                className="form-control search-input"
-                placeholder="Search by Workflow ID, Loan ID, or Date (e.g., 12 Sep 2025)"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-              <i className="fas fa-search search-icon"></i>
+              <div style={{ minWidth: 320 }}>
+                <input
+                  type="search"
+                  className="form-control cq-search-input"
+                  placeholder="Search workitem / loan / user / applicant / date"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  aria-label="Search checker queue"
+                />
+              </div>
             </div>
+
+            {/* table */}
+            <div className="table-responsive">
+              <table className="table cq-table mb-0">
+                <thead>
+                  <tr>
+                    <th className="text-uppercase">WORKITEM ID</th>
+                    <th className="text-uppercase">LOAN ID</th>
+                    <th className="text-uppercase">USER ID</th>
+                    <th className="text-uppercase">APPLICANT NAME</th>
+                    <th className="text-uppercase">STATUS</th>
+                    <th className="text-uppercase">CREATED</th>
+                    <th className="text-uppercase">ACTION</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {pageRows.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="text-center py-4 text-muted">
+                        No records found.
+                      </td>
+                    </tr>
+                  ) : (
+                    pageRows.map((r) => (
+                      <tr key={r.workitemId} className="cq-row">
+                        <td className="fw-bold">{r.workitemId}</td>
+                        <td className="fw-bold">{r.loanId}</td>
+                        <td>{r.userId}</td>
+                        <td>{r.applicant}</td>
+                        <td>
+                          <span className="badge bg-warning text-dark">PENDING</span>
+                        </td>
+                        <td>{formatDate(r.createdAt)}</td>
+                        <td>
+                          <button className="btn btn-sm btn-primary" onClick={() => handleView(r)}>
+                            VIEW
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* pagination */}
+            <div className="d-flex justify-content-end align-items-center mt-3 gap-2">
+              <div className="text-muted me-3">
+                Showing {pageRows.length} of {filteredRows.length}
+              </div>
+              <nav aria-label="Page navigation">
+                <ul className="pagination pagination-sm mb-0">
+                  <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
+                    <button className="page-link" onClick={goPrev}>
+                      Previous
+                    </button>
+                  </li>
+                  <li className="page-item disabled">
+                    <span className="page-link">
+                      {currentPage} / {totalPages}
+                    </span>
+                  </li>
+                  <li className={`page-item ${currentPage === totalPages ? "disabled" : ""}`}>
+                    <button className="page-link" onClick={goNext}>
+                      Next
+                    </button>
+                  </li>
+                </ul>
+              </nav>
+            </div>
+            {/* end card-body */}
           </div>
         </div>
-
-        {/* Table */}
-        <div className="table-container">
-          <table className="table table-hover rounded-table">
-            <thead className="table-header">
-              <tr>
-                <th scope="col">Workflow ID</th>
-                <th scope="col">Loan ID</th>
-                <th scope="col">User ID</th>
-                <th scope="col">Applicant Name</th>
-                <th scope="col">Status</th>
-                <th scope="col">Created</th>
-                <th scope="col">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.map((item, index) => (
-                <tr key={item.workflowId} className="table-row">
-                  <td className="fw-semibold">{item.workflowId}</td>
-                  <td>{item.loanId}</td>
-                  <td>{item.userId}</td>
-                  <td>{item.applicantName}</td>
-                  <td>
-                    <span className="badge status-pending">
-                      PENDING
-                    </span>
-                  </td>
-                  <td className="text-muted">{formatDate(item.created)}</td>
-                  <td>
-                    <button
-                      className="btn btn-view"
-                      onClick={() => handleView(item.workflowId)}
-                    >
-                      View
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {/* Empty State */}
-          {filteredItems.length === 0 && (
-            <div className="empty-state">
-              <p className="text-muted">No items found matching your search criteria.</p>
-            </div>
-          )}
-        </div>
-
-        {/* Results Count */}
-        <div className="mt-3">
-          <small className="text-muted">
-            Showing {filteredItems.length} of {workItems.length} items
-          </small>
-        </div>
       </div>
-
-      <style jsx>{`
-        .checker-queue-container {
-          background-color: #f8f9fa;
-          min-height: 100vh;
-        }
-
-        .checker-queue-title {
-          color: #2c3e50;
-          font-weight: 600;
-          margin-bottom: 0;
-        }
-
-        .search-container {
-          position: relative;
-        }
-
-        .search-input {
-          border: 2px solid #e9ecef;
-          border-radius: 8px;
-          padding: 12px 45px 12px 15px;
-          font-size: 14px;
-          transition: all 0.3s ease;
-        }
-
-        .search-input:focus {
-          border-color: #007bff;
-          box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-        }
-
-        .search-icon {
-          position: absolute;
-          right: 15px;
-          top: 50%;
-          transform: translateY(-50%);
-          color: #6c757d;
-        }
-
-        .table-container {
-          background: white;
-          border-radius: 12px;
-          overflow: hidden;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .rounded-table {
-          margin-bottom: 0;
-          border-radius: 12px;
-          overflow: hidden;
-        }
-
-        .table-header {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-        }
-
-        .table-header th {
-          border: none;
-          padding: 15px 20px;
-          font-weight: 600;
-          font-size: 14px;
-          letter-spacing: 0.5px;
-          text-transform: uppercase;
-        }
-
-        .table-row {
-          transition: all 0.3s ease;
-        }
-
-        .table-row:hover {
-          background-color: #f8f9ff;
-          transform: translateY(-1px);
-        }
-
-        .table-row td {
-          padding: 15px 20px;
-          border-bottom: 1px solid #e9ecef;
-          vertical-align: middle;
-        }
-
-        .status-pending {
-          background: linear-gradient(135deg, #ffeaa7, #fab1a0);
-          color: #d63031;
-          font-weight: 600;
-          font-size: 11px;
-          letter-spacing: 0.5px;
-          padding: 6px 12px;
-          border-radius: 20px;
-          border: none;
-        }
-
-        .btn-view {
-          background: linear-gradient(135deg, #74b9ff, #0984e3);
-          color: white;
-          border: none;
-          padding: 8px 20px;
-          border-radius: 20px;
-          font-size: 13px;
-          font-weight: 500;
-          transition: all 0.3s ease;
-          box-shadow: 0 2px 5px rgba(116, 185, 255, 0.3);
-        }
-
-        .btn-view:hover {
-          background: linear-gradient(135deg, #0984e3, #74b9ff);
-          transform: translateY(-2px);
-          box-shadow: 0 4px 15px rgba(116, 185, 255, 0.4);
-          color: white;
-        }
-
-        .empty-state {
-          text-align: center;
-          padding: 60px 20px;
-          background: white;
-        }
-
-        .fw-semibold {
-          font-weight: 600;
-          color: #2c3e50;
-        }
-
-        .text-muted {
-          color: #6c757d !important;
-        }
-
-        /* Responsive Design */
-        @media (max-width: 768px) {
-          .table-container {
-            overflow-x: auto;
-          }
-          
-          .rounded-table {
-            min-width: 800px;
-          }
-          
-          .search-input {
-            font-size: 16px; /* Prevents zoom on iOS */
-          }
-        }
-
-        /* Custom scrollbar for table */
-        .table-container::-webkit-scrollbar {
-          height: 8px;
-        }
-
-        .table-container::-webkit-scrollbar-track {
-          background: #f1f1f1;
-          border-radius: 4px;
-        }
-
-        .table-container::-webkit-scrollbar-thumb {
-          background: #c1c1c1;
-          border-radius: 4px;
-        }
-
-        .table-container::-webkit-scrollbar-thumb:hover {
-          background: #a8a8a8;
-        }
-
-        /* Pagination Styles */
-        .pagination .page-link {
-          color: #667eea;
-          border: 1px solid #dee2e6;
-          padding: 8px 12px;
-          margin: 0 2px;
-          border-radius: 6px;
-          font-size: 14px;
-          transition: all 0.3s ease;
-        }
-
-        .pagination .page-link:hover {
-          color: #fff;
-          background: linear-gradient(135deg, #667eea, #764ba2);
-          border-color: #667eea;
-          transform: translateY(-1px);
-        }
-
-        .pagination .page-item.active .page-link {
-          background: linear-gradient(135deg, #667eea, #764ba2);
-          border-color: #667eea;
-          color: white;
-          box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-        }
-
-        .pagination .page-item.disabled .page-link {
-          color: #6c757d;
-          background-color: #fff;
-          border-color: #dee2e6;
-          cursor: not-allowed;
-        }
-
-        .pagination .page-item.disabled .page-link:hover {
-          transform: none;
-          background-color: #fff;
-        }
-      `}</style>
-
-      {/* Bootstrap CSS CDN */}
-      <link
-        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-        rel="stylesheet"
-      />
-      {/* Font Awesome for search icon */}
-      <link
-        rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
-      />
     </div>
   );
-};
+}
+```
 
-export default CheckerQueue;
+```
+/* CheckerQueueComponent.css */
+
+/* page background (full-screen subtle) */
+body, html, #root {
+  height: 100%;
+}
+
+/* center card and give page gradient */
+.checker-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #0b3b78 0%, #113a66 100%);
+  padding: 28px 20px;
+}
+
+/* card that holds the table (white) */
+.checker-card {
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 30px rgba(3, 20, 60, 0.12);
+  border: none;
+}
+
+/* heading */
+.cq-heading {
+  color: #0b3b78;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* search input custom */
+.cq-search-input {
+  border: 2px solid #0b3b78;
+  color: #0b3b78;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+/* table rounded corners */
+.cq-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* header style (uppercase set by class already) */
+.cq-table thead th {
+  background: linear-gradient(90deg, #003a7b 0%, #004a9b 100%);
+  color: #fff;
+  font-weight: 700;
+  padding: 12px 14px;
+  border: none;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+
+/* body cells */
+.cq-table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #eef3f9;
+  vertical-align: middle;
+  color: #16325c;
+  font-size: 13px;
+}
+
+/* clickable row hover: change entire row background */
+.cq-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.cq-row:hover td {
+  background-color: #f3f8ff;
+}
+
+/* badge style for pending (yellow) */
+.badge.bg-warning {
+  background-color: #fff3cd !important;
+  color: #856404 !important;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* compact pagination */
+.pagination-sm .page-link {
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
+/* make table responsive with rounded corners on small screens */
+@media (max-width: 900px) {
+  .cq-search-input {
+    width: 100%;
+    margin-top: 10px;
+  }
+}
 ```
