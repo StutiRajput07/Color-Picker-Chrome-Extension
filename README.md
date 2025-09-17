@@ -4,18 +4,7 @@
 - Designed an intuitive user interface with a color picker tool and real-time color preview.
 - Integrated functionality to copy the selected color code to the clipboard.
 ```
-import React, { useMemo, useState } from "react";
-import "bootstrap/dist/css/bootstrap.min.css";
-import "./CheckerQueueComponent.css";
 
-/**
- * CheckerQueueComponent.js
- *
- * - Uses dummy data (createdAt stored as timestamp in ms)
- * - Search across workitemId, loanId, userId, applicant, and formatted date
- * - 10 rows per page with Next/Prev pagination
- * - Date format: 12 Sep, 2025
- */
 
 const ROWS_TOTAL = 37; // generate dummy rows count (example)
 const PAGE_SIZE = 10;
