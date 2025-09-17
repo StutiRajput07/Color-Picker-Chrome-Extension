@@ -4,285 +4,217 @@
 - Designed an intuitive user interface with a color picker tool and real-time color preview.
 - Integrated functionality to copy the selected color code to the clipboard.
 ```
+import React, { useEffect, useMemo, useState } from "react";
+import "./CheckerQueueComponent.css"; // keep your existing CSS file
 
-
-const ROWS_TOTAL = 37; // generate dummy rows count (example)
 const PAGE_SIZE = 10;
 
-// helper to format timestamp -> "12 Sep, 2025"
-function formatDate(timestampMs) {
-  if (!timestampMs) return "";
-  const d = new Date(Number(timestampMs));
+// Helper: format ISO timestamp/string -> "12 Sep, 2025"
+function formatDateIsoOnly(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
   const opts = { day: "2-digit", month: "short", year: "numeric" };
-  // month short gives "Sep", we want "12 Sep, 2025"
-  const formatter = new Intl.DateTimeFormat("en-GB", opts);
-  const parts = formatter.format(d); // e.g., "12 Sep 2025"
-  // Insert comma after month
+  // e.g. "12 Sep 2025"
+  const parts = new Intl.DateTimeFormat("en-GB", opts).format(d);
   const [day, month, year] = parts.split(" ");
   return `${day} ${month}, ${year}`;
 }
 
-// generate dummy data with timestamp (ms)
-function generateDummyRows(count) {
-  const rows = [];
-  const now = Date.now();
-  for (let i = 1; i <= count; i++) {
-    // serial-style IDs
-    const workitemId = `WI-${1000 + i}`; // e.g., WI-1001
-    const loanId = `LN-${2000 + i}`; // e.g., LN-2001
-    const userId = `user_${String(i).padStart(3, "0")}`;
-    const applicant = ["John Doe", "Alice Smith", "Rahul Kumar", "Priya Verma", "Arjun Patel"][(i - 1) % 5];
-    // createdAt: spread recent days (ms)
-    const createdAt = now - i * 86400000; // i days ago
-    rows.push({
-      workitemId,
-      loanId,
-      userId,
-      applicant,
-      status: "PENDING",
-      createdAt, // timestamp in ms
-    });
-  }
-  return rows;
-}
-
 export default function CheckerQueueComponent() {
-  const allRows = useMemo(() => generateDummyRows(ROWS_TOTAL), []);
+  const [rows, setRows] = useState([]);        // merged rows used by table
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // UI states (keep same search + pagination behavior)
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
-  // filter rows by search across specified fields
-  const filteredRows = useMemo(() => {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadData() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // 1) Fetch workflows moved to checker
+        // CHANGE this URL to your real workflows endpoint if needed
+        const wfRes = await fetch("http://localhost:8080/getWorkflowsByStatus/Moved_To_Checker", {
+          headers: { Accept: "application/json" },
+        });
+        if (!wfRes.ok) throw new Error(`Workflows fetch failed: ${wfRes.status}`);
+        const workflows = await wfRes.json(); // array of workflow objects
+
+        // 2) Extract unique user_ids
+        const userIds = Array.from(new Set(workflows.map((w) => w.user_id).filter(Boolean)));
+
+        // 3) For each userId call the API that returns a plain string (applicant name).
+        // We fetch all in parallel with Promise.all
+        const userPromises = userIds.map(async (uid) => {
+          try {
+            const r = await fetch(`http://localhost:8080/getCustomerByUserId/${encodeURIComponent(uid)}`, {
+              headers: { Accept: "text/plain, application/json" },
+            });
+            if (!r.ok) {
+              return { user_id: uid, name: "" };
+            }
+            // Endpoint returns plain string -> use text()
+            const text = await r.text();
+            return { user_id: uid, name: (text || "").trim() };
+          } catch (err) {
+            return { user_id: uid, name: "" };
+          }
+        });
+
+        const userResults = await Promise.all(userPromises);
+        const userMap = userResults.reduce((m, u) => {
+          m[u.user_id] = u.name || "";
+          return m;
+        }, {});
+
+        // 4) Build the final rows array used by the table.
+        // Keep id formatting like WI-xxxx and LN-xxxx (this matches the UI you used)
+        const merged = workflows.map((w, idx) => ({
+          workitemId:
+            w.workFlowId != null ? `WI-${1000 + Number(w.workFlowId)}` : `WI-${1000 + idx}`,
+          loanId: w.loan_id != null ? `LN-${1000 + Number(w.loan_id)}` : `LN-${1000 + idx}`,
+          userId: w.user_id ?? "",
+          applicant: userMap[w.user_id] || "",
+          status: w.status ?? "PENDING",
+          createdAt: w.createdAt ?? w.created_at ?? w.CreatedAt ?? "",
+          _raw: w,
+        }));
+
+        if (!cancelled) {
+          setRows(merged);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || "Failed to load data");
+          setLoading(false);
+        }
+      }
+    }
+
+    loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []); // run once on mount
+
+  // --------------------------
+  // Search (unchanged behavior): search across workitemId, loanId, userId, applicant, created date
+  const filtered = useMemo(() => {
     const q = (query || "").trim().toLowerCase();
-    if (!q) return allRows;
-    return allRows.filter((r) => {
-      // search workitem id, loan id, user id, applicant, formatted date
-      if (String(r.workitemId).toLowerCase().includes(q)) return true;
-      if (String(r.loanId).toLowerCase().includes(q)) return true;
-      if (String(r.userId).toLowerCase().includes(q)) return true;
-      if (String(r.applicant).toLowerCase().includes(q)) return true;
-      if (formatDate(r.createdAt).toLowerCase().includes(q)) return true;
+    if (!q) return rows;
+    return rows.filter((r) => {
+      if ((r.workitemId || "").toLowerCase().includes(q)) return true;
+      if ((r.loanId || "").toLowerCase().includes(q)) return true;
+      if ((r.userId || "").toLowerCase().includes(q)) return true;
+      if ((r.applicant || "").toLowerCase().includes(q)) return true;
+      if ((formatDateIsoOnly(r.createdAt) || "").toLowerCase().includes(q)) return true;
       return false;
     });
-  }, [allRows, query]);
+  }, [rows, query]);
 
-  // pagination
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  // --------------------------
+  // Pagination (10 per page)
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(Math.max(1, page), totalPages);
   const pageStart = (currentPage - 1) * PAGE_SIZE;
-  const pageRows = filteredRows.slice(pageStart, pageStart + PAGE_SIZE);
+  const pageRows = filtered.slice(pageStart, pageStart + PAGE_SIZE);
 
-  const handleView = (row) => {
-    // placeholder - replace with navigation / modal as needed
-    console.log("VIEW clicked:", row.workitemId);
-    alert(`Open details for ${row.workitemId}`);
-  };
-
-  const goPrev = () => setPage((p) => Math.max(1, p - 1));
-  const goNext = () => setPage((p) => Math.min(totalPages, p + 1));
-
-  // reset page to 1 when query changes
-  React.useEffect(() => {
+  // When search changes, go back to page 1
+  useEffect(() => {
     setPage(1);
   }, [query]);
 
+  // Simple view handler (replace with modal/navigation if you want)
+  const handleView = (row) => {
+    // keep simple: log to console (UI unchanged)
+    console.log("VIEW clicked", row.workitemId, row);
+    alert(`View ${row.workitemId}`);
+  };
+
+  // --------------------------
+  // Render
+  if (loading) return <div className="text-center p-4">Loading...</div>;
+  if (error) return <div className="text-center text-danger p-4">Error: {error}</div>;
+
   return (
-    <div className="checker-page">
-      <div className="container-fluid p-4">
-        <div className="card checker-card">
-          <div className="card-body">
-            {/* header: title left, search right */}
-            <div className="d-flex align-items-center justify-content-between mb-3">
-              <h4 className="cq-heading mb-0">CHECKER QUEUE</h4>
+    <div>
+      {/* Keep your existing heading/search markup & classes unchanged in your app.
+          Below is the table and pagination rendered with the same class names you use */}
+      <div className="table-responsive">
+        <table className="table cq-table mb-0">
+          <thead>
+            <tr>
+              <th>WORKITEM ID</th>
+              <th>LOAN ID</th>
+              <th>USER ID</th>
+              <th>APPLICANT NAME</th>
+              <th>STATUS</th>
+              <th>CREATED</th>
+              <th>ACTION</th>
+            </tr>
+          </thead>
 
-              <div style={{ minWidth: 320 }}>
-                <input
-                  type="search"
-                  className="form-control cq-search-input"
-                  placeholder="Search workitem / loan / user / applicant / date"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label="Search checker queue"
-                />
-              </div>
-            </div>
-
-            {/* table */}
-            <div className="table-responsive">
-              <table className="table cq-table mb-0">
-                <thead>
-                  <tr>
-                    <th className="text-uppercase">WORKITEM ID</th>
-                    <th className="text-uppercase">LOAN ID</th>
-                    <th className="text-uppercase">USER ID</th>
-                    <th className="text-uppercase">APPLICANT NAME</th>
-                    <th className="text-uppercase">STATUS</th>
-                    <th className="text-uppercase">CREATED</th>
-                    <th className="text-uppercase">ACTION</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {pageRows.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="text-center py-4 text-muted">
-                        No records found.
-                      </td>
-                    </tr>
-                  ) : (
-                    pageRows.map((r) => (
-                      <tr key={r.workitemId} className="cq-row">
-                        <td className="fw-bold">{r.workitemId}</td>
-                        <td className="fw-bold">{r.loanId}</td>
-                        <td>{r.userId}</td>
-                        <td>{r.applicant}</td>
-                        <td>
-                          <span className="badge bg-warning text-dark">PENDING</span>
-                        </td>
-                        <td>{formatDate(r.createdAt)}</td>
-                        <td>
-                          <button className="btn btn-sm btn-primary" onClick={() => handleView(r)}>
-                            VIEW
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* pagination */}
-            <div className="d-flex justify-content-end align-items-center mt-3 gap-2">
-              <div className="text-muted me-3">
-                Showing {pageRows.length} of {filteredRows.length}
-              </div>
-              <nav aria-label="Page navigation">
-                <ul className="pagination pagination-sm mb-0">
-                  <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
-                    <button className="page-link" onClick={goPrev}>
-                      Previous
+          <tbody>
+            {pageRows.length === 0 ? (
+              <tr>
+                <td colSpan="7" className="text-center py-4 text-muted">
+                  No records found
+                </td>
+              </tr>
+            ) : (
+              pageRows.map((r) => (
+                <tr key={r.workitemId} className="cq-row">
+                  <td className="fw-bold">{r.workitemId}</td>
+                  <td className="fw-bold">{r.loanId}</td>
+                  <td>{r.userId}</td>
+                  <td>{r.applicant}</td>
+                  <td>
+                    <span className="badge bg-warning text-dark">PENDING</span>
+                  </td>
+                  <td>{formatDateIsoOnly(r.createdAt)}</td>
+                  <td>
+                    <button className="btn-view" onClick={() => handleView(r)}>
+                      VIEW
                     </button>
-                  </li>
-                  <li className="page-item disabled">
-                    <span className="page-link">
-                      {currentPage} / {totalPages}
-                    </span>
-                  </li>
-                  <li className={`page-item ${currentPage === totalPages ? "disabled" : ""}`}>
-                    <button className="page-link" onClick={goNext}>
-                      Next
-                    </button>
-                  </li>
-                </ul>
-              </nav>
-            </div>
-            {/* end card-body */}
-          </div>
-        </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination controls (same style as before) */}
+      <div className="d-flex justify-content-end align-items-center mt-3 gap-2">
+        <div className="text-muted me-3">Showing {pageRows.length} of {filtered.length}</div>
+        <nav aria-label="Page navigation">
+          <ul className="pagination pagination-sm mb-0">
+            <li className={`page-item ${currentPage === 1 ? "disabled" : ""}`}>
+              <button className="page-link" onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                Previous
+              </button>
+            </li>
+            <li className="page-item disabled">
+              <span className="page-link">
+                {currentPage} / {totalPages}
+              </span>
+            </li>
+            <li className={`page-item ${currentPage === totalPages ? "disabled" : ""}`}>
+              <button className="page-link" onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>
+                Next
+              </button>
+            </li>
+          </ul>
+        </nav>
       </div>
     </div>
   );
-}
-```
-
-```
-/* CheckerQueueComponent.css */
-
-/* page background (full-screen subtle) */
-body, html, #root {
-  height: 100%;
-}
-
-/* center card and give page gradient */
-.checker-page {
-  min-height: 100vh;
-  background: linear-gradient(180deg, #0b3b78 0%, #113a66 100%);
-  padding: 28px 20px;
-}
-
-/* card that holds the table (white) */
-.checker-card {
-  border-radius: 12px;
-  background: #ffffff;
-  box-shadow: 0 8px 30px rgba(3, 20, 60, 0.12);
-  border: none;
-}
-
-/* heading */
-.cq-heading {
-  color: #0b3b78;
-  font-weight: 700;
-  margin: 0;
-}
-
-/* search input custom */
-.cq-search-input {
-  border: 2px solid #0b3b78;
-  color: #0b3b78;
-  padding: 6px 10px;
-  border-radius: 6px;
-}
-
-/* table rounded corners */
-.cq-table {
-  border-collapse: separate;
-  border-spacing: 0;
-  width: 100%;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-/* header style (uppercase set by class already) */
-.cq-table thead th {
-  background: linear-gradient(90deg, #003a7b 0%, #004a9b 100%);
-  color: #fff;
-  font-weight: 700;
-  padding: 12px 14px;
-  border: none;
-  text-transform: uppercase;
-  font-size: 13px;
-}
-
-/* body cells */
-.cq-table tbody td {
-  padding: 10px 14px;
-  border-bottom: 1px solid #eef3f9;
-  vertical-align: middle;
-  color: #16325c;
-  font-size: 13px;
-}
-
-/* clickable row hover: change entire row background */
-.cq-row {
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-.cq-row:hover td {
-  background-color: #f3f8ff;
-}
-
-/* badge style for pending (yellow) */
-.badge.bg-warning {
-  background-color: #fff3cd !important;
-  color: #856404 !important;
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-weight: 700;
-  font-size: 12px;
-}
-
-/* compact pagination */
-.pagination-sm .page-link {
-  padding: 4px 8px;
-  font-size: 13px;
-}
-
-/* make table responsive with rounded corners on small screens */
-@media (max-width: 900px) {
-  .cq-search-input {
-    width: 100%;
-    margin-top: 10px;
-  }
 }
 ```
