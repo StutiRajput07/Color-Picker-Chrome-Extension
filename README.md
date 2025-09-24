@@ -4,13 +4,11 @@
 - Designed an intuitive user interface with a color picker tool and real-time color preview.
 - Integrated functionality to copy the selected color code to the clipboard.
 ```
-The Checker’s Queue module is built using React with functional components and hooks. On the frontend, it renders a paginated and searchable table that
-displays work items assigned to the checker. We are consuming backend APIs exposed over HTTP using Axios. First, we call the getWorkFlowsByStatus endpoint to fetch all
- workflows that have moved to the checker stage. Since the workflow response does not directly include applicant names, we enrich each record by making an additional
- API call to getApplicantNameByUserId, which returns the applicant name as a string. This data is merged into the workflow objects and stored in component state. The UI
- supports full-text search across multiple fields including formatted Work Item IDs (like WI001), Loan IDs (like LN001), User IDs, Applicant Names, and Created Date. Client-side pagination ensures that only ten rows are visible at a time, and navigation is handled using Previous and Next controls. Each row displays a PENDING
- status badge and an action button labeled VIEW, which can be extended to open a detail modal or trigger workflow actions.
+Planned: Add CIBIL credit-score and KYC API integration to enable automated risk-based decisions and identity checks.
 
-For styling, we have used Bootstrap along with custom CSS for hover effects, rounded corners, and a consistent color scheme.
-The architecture is designed to be modular: API logic is separated into an apis folder, while the presentation layer is cleanly handled in the React component. Overall, the solution ensures a responsive, extensible, and production-ready interface for checker operations.”
+Next-steps paragraph (simple)
+Planned next step: connect third-party CIBIL and KYC services (using soft or hard checks with the applicant’s consent). This will let the system automatically verify identity, pull a credit score to assess risk, and apply configurable rules to approve, flag, or route applications — while keeping all checks auditable and user-consent driven.
+
+Very short, plain-English explanation (for speaker notes)
+We’ll call trusted credit and KYC services (only after the user agrees). The system will get a credit score and identity verification result, then use simple, configurable rules to decide if an application can be auto-approved, sent for manual review, or rejected. All checks will be logged for auditing and privacy protections (PII masking, encrypted storage).
 ```
